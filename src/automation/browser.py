@@ -10,9 +10,13 @@ class BrowserManager:
 
     def launch(self):
         self.playwright = sync_playwright().start()
-        self.browser_context = self.playwright.chromium.launch_persistent_context(
-            user_data_dir="./playwright_user_data", headless=self.headless
+        # self.browser_context = self.playwright.chromium.launch_persistent_context(
+        #     user_data_dir="./playwright_user_data", headless=self.headless
+        # )
+        self.browser = self.playwright.chromium.connect_over_cdp(
+            endpoint_url="http://localhost:9222/"
         )
+        self.browser_context = self.browser.new_context()
         self.page = self.browser_context.new_page()
         return self.page
 
