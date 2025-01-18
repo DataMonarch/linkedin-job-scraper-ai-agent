@@ -59,10 +59,10 @@ def handle_resume_upload(resume):
     info = parse_resume(resume)
     print(f"Extracted info: {info}")
 
-    positions_str = ", ".join(info["positions"])
+    positions_str = info["positions"]
     location = info["current_location"]
-    years_experience = info["years_experience"]
-    skills_str = ", ".join(info["skills"])
+    years_experience = int(info["years_experience"].split(" ")[0])
+    skills_str = info["skills"]
 
     return positions_str, location, years_experience, skills_str
 
