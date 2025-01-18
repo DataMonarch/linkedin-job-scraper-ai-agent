@@ -2,6 +2,8 @@ import gradio as gr
 import urllib.parse
 import os
 import pymupdf as fitz
+from agent.llm import extract_resume_info
+
 
 def parse_resume(resume_file) -> dict:
     """
@@ -14,46 +16,38 @@ def parse_resume(resume_file) -> dict:
     In production, you'd integrate an LLM or robust parser here.
     """
     if not resume_file:
-        return {
-            "positions": [],
-            "location": "",
-            "years_experience": 0,
-            "skills": []
-        }
-    
+        return {"positions": [], "location": "", "years_experience": 0, "skills": []}
+
     print(f"Received resume file: {resume_file.name}")
     filetype = os.path.splitext(resume_file.name)[-1]
-    
-    if filetype != ".pdf": 
+
+    if filetype != ".pdf":
         raise ValueError(f"Only PDF files are supported at the moment. Got: {filetype}")
-    
-    
+
     # Read the file contents
     doc = fitz.open(filename=resume_file.name)
-    doc_text = ""    
+    doc_text = ""
     for page_num in range(len(doc)):
         page = doc.load_page(page_num)
         text = page.get_text(option="text")
         doc_text += text
-        
-    print(doc_text[:500])     
 
     # TODO: implement ollama models to extract resume info
-
     # Mock data
-    extracted_info = {
-        "positions": ["Software Engineer", "Data Scientist"],  # from resume
-        "location": "New York",
-        "years_experience": 5,
-        "skills": ["Python", "NLP", "Machine Learning"]
-    }
-    return extracted_info
+    # extracted_info = {
+    #     "positions": ["Software Engineer", "Data Scientist"],  # from resume
+    #     "location": "New York",
+    #     "years_experience": 5,
+    #     "skills": ["Python", "NLP", "Machine Learning"],
+    # }
+    return extract_resume_info(doc_text, provider="openai")
+
 
 def handle_resume_upload(resume):
     """
     Receives a file from the user,
     calls `parse_resume`, and returns extracted info for the UI.
-    
+
     Args:
         resume (File): File uploaded by the user.
     Returns:
@@ -63,15 +57,19 @@ def handle_resume_upload(resume):
         return "", "", 0, ""
 
     info = parse_resume(resume)
-    
+    print(f"Extracted info: {info}")
+
     positions_str = ", ".join(info["positions"])
-    location = info["location"]
+    location = info["current_location"]
     years_experience = info["years_experience"]
     skills_str = ", ".join(info["skills"])
 
     return positions_str, location, years_experience, skills_str
 
-def build_linkedin_url(positions_str, location, years_experience, skills_str, custom_keywords):
+
+def build_linkedin_url(
+    positions_str, location, years_experience, skills_str, custom_keywords
+):
     """
     Construct a LinkedIn job search URL for jobs posted in the last week (7 days),
     using the extracted data and any additional user-provided keywords.
@@ -113,6 +111,7 @@ def build_linkedin_url(positions_str, location, years_experience, skills_str, cu
     # In a production scenario, we might add more filters if needed
     return final_url
 
+
 def gradio_app():
     with gr.Blocks() as demo:
         gr.Markdown("# Resume Analysis & LinkedIn Search (Last Week)")
@@ -134,7 +133,7 @@ def gradio_app():
         analyze_btn.click(
             fn=handle_resume_upload,
             inputs=[resume_in],
-            outputs=[positions_box, location_box, years_box, skills_box]
+            outputs=[positions_box, location_box, years_box, skills_box],
         )
 
         # Additional custom keywords user might want
@@ -143,15 +142,24 @@ def gradio_app():
 
         # Build URL
         build_btn = gr.Button("Build LinkedIn URL")
-        linkedin_url_out = gr.Textbox(label="Resulting LinkedIn Search URL", interactive=False)
+        linkedin_url_out = gr.Textbox(
+            label="Resulting LinkedIn Search URL", interactive=False
+        )
 
         build_btn.click(
             fn=build_linkedin_url,
-            inputs=[positions_box, location_box, years_box, skills_box, custom_keywords_box],
-            outputs=[linkedin_url_out]
+            inputs=[
+                positions_box,
+                location_box,
+                years_box,
+                skills_box,
+                custom_keywords_box,
+            ],
+            outputs=[linkedin_url_out],
         )
 
     return demo
+
 
 if __name__ == "__main__":
     app = gradio_app()
