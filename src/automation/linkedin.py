@@ -10,13 +10,13 @@ class LinkedInAutomation:
     def login_and_check(self):
         """User manually logs in, then we check something like the user profile icon."""
         page = self.browser_mgr.launch()
-        page.goto("https://www.linkedin.com/login")
+        page.goto("https://www.linkedin.com")
 
         logged_in = False
         while not logged_in:
             try:
                 # Force navigation to the feed page in case it's not automatically redirected
-                page.goto("https://www.linkedin.com/feed/")
+                page.goto("https://www.linkedin.com/jobs/")
 
                 # Wait for a selector that indicates the user is logged in.
                 # Adjust this selector to something stable on the LinkedIn feed or 'Me' nav item.
@@ -31,6 +31,7 @@ class LinkedInAutomation:
                 # or there's a slow network. Sleep briefly and try again.
                 time.sleep(2)
                 print("User is still logging in...")
+                print(e)
 
         print("User is logged in successfully.")
         return page

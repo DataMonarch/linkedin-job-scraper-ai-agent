@@ -16,7 +16,7 @@ class BrowserManager:
         self.browser = self.playwright.chromium.connect_over_cdp(
             endpoint_url="http://localhost:9222/"
         )
-        self.browser_context = self.browser.new_context()
+        self.browser_context = self.browser.contexts[0]
         self.page = self.browser_context.new_page()
         return self.page
 
