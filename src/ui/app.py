@@ -1,6 +1,7 @@
 import gradio as gr
 import urllib.parse
 import os
+import pymupdf as fitz
 
 def parse_resume(resume_file) -> dict:
     """
@@ -12,10 +13,6 @@ def parse_resume(resume_file) -> dict:
 
     In production, you'd integrate an LLM or robust parser here.
     """
-    
-    print(f"Received resume file: {resume_file.name}")
-    filetype, _ = os.path.splitext(resume_file.name)
-    
     if not resume_file:
         return {
             "positions": [],
@@ -23,10 +20,23 @@ def parse_resume(resume_file) -> dict:
             "years_experience": 0,
             "skills": []
         }
-
-    # Example: read raw bytes, decode text
-    content = resume_file.read()
-    resume_text = content.decode("utf-8", errors="ignore")
+    
+    print(f"Received resume file: {resume_file.name}")
+    filetype = os.path.splitext(resume_file.name)[-1]
+    
+    if filetype != ".pdf": 
+        raise ValueError(f"Only PDF files are supported at the moment. Got: {filetype}")
+    
+    
+    # Read the file contents
+    doc = fitz.open(filename=resume_file.name)
+    doc_text = ""    
+    for page_num in range(len(doc)):
+        page = doc.load_page(page_num)
+        text = page.get_text(option="text")
+        doc_text += text
+        
+    print(doc_text[:500])     
 
     # TODO: implement ollama models to extract resume info
 
