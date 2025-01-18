@@ -1,6 +1,7 @@
+from typing import Dict
 from ollama import chat
 from ollama import ChatResponse
-from prompts import (
+from .prompts import (
     RESUME_INFO_EXTRACTOR_SYSTEM_PROMPT,
     RESUME_INFO_EXTRACTOR_USER_PROMPT,
 )
@@ -11,8 +12,30 @@ import os
 openai.api_key = os.getenv("OPENAI_API_KEY", None)
 OPENAI_AVAILABLE = openai.api_key is not None
 
+EXTRACTION_FIELDS = ["positions", "current_location", "years_experience", "skills"]
+
 if not OPENAI_AVAILABLE:
     print("OpenAI API key not found. Only Ollama will be used.")
+
+
+def parse_extracted_info(extracted_info: str) -> dict:
+    """
+    Parse the extracted information from the resume.
+
+    Args:
+        extracted_info (str): Extracted information from the resume.
+
+    Returns:
+        dict: Parsed information with keys: "positions", "location", "years_experience", "skills".
+    """
+    parsed_info = {}
+
+    for field in EXTRACTION_FIELDS:
+        field_start = extracted_info.find(f"{{field}}:") + len(f"{field}:") + 2
+        field_end = extracted_info.find("\n", field_start)
+        parsed_info[field] = extracted_info[field_start:field_end].strip()
+
+    return parsed_info
 
 
 def extract_resume_info(
@@ -20,7 +43,7 @@ def extract_resume_info(
     model: str = "mistral",  # e.g., "llama3.2", "mistral", etc. for Ollama
     provider: str = "ollama",  # "ollama" or "openai"
     openai_model: str = "gpt-4o-mini",  # GPT-4 or other OpenAI model
-) -> str:
+) -> Dict[str, str]:
     """
     Extracts resume information using either Ollama (local) or OpenAI GPT-4.
 
@@ -31,7 +54,7 @@ def extract_resume_info(
         openai_model (str): OpenAI model name (e.g., "gpt-4").
 
     Returns:
-        str: Extracted information from the resume.
+        Dict[str, str]: Extracted information with keys: "positions", "location", "years_experience", "skills".
 
     Raises:
         ValueError: If OpenAI API key is not set and provider is "openai".
@@ -60,7 +83,7 @@ def extract_resume_info(
                 {"role": "user", "content": user_prompt},
             ],
         )
-        return response["message"]["content"]
+        llm_response = response["message"]["content"]
 
     # ---- Option B: Use OpenAI GPT-4 ----
     elif provider.lower() == "openai":
@@ -75,13 +98,16 @@ def extract_resume_info(
                 # temperature, max_tokens, etc. can be specified as needed
             )
             # Return the text from the first (and typically only) choice
-            return openai_response.choices[0].message.content
+            llm_response = openai_response.choices[0].message.content
         except Exception as e:
             print("Error calling OpenAI:", e)
             return f"Error: {str(e)}"
 
     else:
         raise ValueError(f"Unknown provider: {provider}")
+
+    print(f"LLM Response: {llm_response}")
+    return parse_extracted_info(llm_response)
 
 
 if __name__ == "__main__":
