@@ -1,161 +1,122 @@
-import gradio as gr
-import urllib.parse
 import os
-import pymupdf as fitz
-from agent.llm import extract_resume_info
+import json
+from typing import List
+import gradio as gr
+
+from automation.resume_parser import ResumeParser
+from automation.linkedin import LinkedInAutomation, USER_DATA_DIR
+
+USER_DATA_PATH = os.path.join(USER_DATA_DIR, "user_data.json")
 
 
-def parse_resume(resume_file) -> dict:
+def handle_resume_with_resumeparser(resume_file, num_keywords):
     """
-    Stub function to parse a resume (PDF/text) for:
-      - positions
-      - location
-      - years_experience
-      - skills
-
-    In production, you'd integrate an LLM or robust parser here.
+    1. Create a ResumeParser instance
+    2. Call extract_keywords_for_search() => writes user_data.json
+    3. Read user_data.json and return fields for display
     """
     if not resume_file:
-        return {"positions": [], "location": "", "years_experience": 0, "skills": []}
+        return "", "", 0, "", ""
 
-    print(f"Received resume file: {resume_file.name}")
-    filetype = os.path.splitext(resume_file.name)[-1]
+    parser = ResumeParser(resume_file, num_keywords)
+    parser.extract_keywords_for_search()  # saves user_data.json
 
-    if filetype != ".pdf":
-        raise ValueError(f"Only PDF files are supported at the moment. Got: {filetype}")
+    # read user_data.json
+    if not os.path.exists(USER_DATA_PATH):
+        return "", "", 0, "", "No data found after parsing."
 
-    # Read the file contents
-    doc = fitz.open(filename=resume_file.name)
-    doc_text = ""
-    for page_num in range(len(doc)):
-        page = doc.load_page(page_num)
-        text = page.get_text(option="text")
-        doc_text += text
+    with open(USER_DATA_PATH, "r") as f:
+        user_data = json.load(f)
 
-    # TODO: implement ollama models to extract resume info
-    # Mock data
-    # extracted_info = {
-    #     "positions": ["Software Engineer", "Data Scientist"],  # from resume
-    #     "location": "New York",
-    #     "years_experience": 5,
-    #     "skills": ["Python", "NLP", "Machine Learning"],
-    # }
-    return extract_resume_info(doc_text, provider="openai")
+    positions_str = user_data.get("positions", "")
+    location_str = user_data.get("location", "")
+    years_experience_int = user_data.get("years_experience", 0)
+    skills_str = user_data.get("skills", "")
+    combos_str = user_data.get("keyword_combinations", "")
+
+    return positions_str, location_str, years_experience_int, skills_str, combos_str
 
 
-def handle_resume_upload(resume):
+def handle_scrape_jobs(search_rate_limit):
     """
-    Receives a file from the user,
-    calls `parse_resume`, and returns extracted info for the UI.
-
-    Args:
-        resume (File): File uploaded by the user.
-    Returns:
-        Tuple of (positions_str, location, years_experience, skills_str)
+    Instantiate LinkedInAutomation and gather job listings up to 'search_rate_limit' URLs.
+    Return results in a 2D list for display in a DataFrame.
     """
-    if resume is None:
-        return "", "", 0, ""
+    li_auto = LinkedInAutomation(headless=False)  # or True if you prefer headless
+    job_data = li_auto.gather_job_listings(search_rate_limit=search_rate_limit)
+    li_auto.close()
 
-    info = parse_resume(resume)
-    print(f"Extracted info: {info}")
+    # Convert job_data (list of dicts) => list of rows
+    rows = []
+    # columns: [job_id, title, company, location, benefits, footer_tags, job_url]
+    for job in job_data:
+        job_id = job.get("job_id", "")
+        title = job.get("title", "")
+        company = job.get("company", "")
+        location = job.get("location", "")
+        benefits = job.get("benefits", "")
+        footer_tags = ", ".join(job.get("footer_tags", []))
+        job_url = job.get("job_url", "")
+        rows.append([job_id, title, company, location, benefits, footer_tags, job_url])
 
-    positions_str = info["positions"]
-    location = info["current_location"]
-    years_experience = int(info["years_experience"].split(" ")[0])
-    skills_str = info["skills"]
-
-    return positions_str, location, years_experience, skills_str
-
-
-def build_linkedin_url(
-    positions_str, location, years_experience, skills_str, custom_keywords
-):
-    """
-    Construct a LinkedIn job search URL for jobs posted in the last week (7 days),
-    using the extracted data and any additional user-provided keywords.
-    """
-    # Combine positions + skills + custom keywords into a single list
-    all_terms = []
-
-    if positions_str.strip():
-        pos_list = [p.strip() for p in positions_str.split(",")]
-        all_terms.extend(pos_list)
-
-    if skills_str.strip():
-        skill_list = [s.strip() for s in skills_str.split(",")]
-        all_terms.extend(skill_list)
-
-    if custom_keywords.strip():
-        custom_list = [k.strip() for k in custom_keywords.split(",")]
-        all_terms.extend(custom_list)
-
-    # Join them for the 'keywords' param, e.g. "Software Engineer OR Python OR NLP"
-    if all_terms:
-        joined_keywords = " OR ".join(all_terms)
-    else:
-        joined_keywords = ""
-
-    encoded_keywords = urllib.parse.quote_plus(joined_keywords)
-    encoded_location = urllib.parse.quote_plus(location) if location else ""
-
-    # f_TPR=r604800 -> Posted in last week
-    # sortBy=DD -> sort by date
-    base_url = "https://www.linkedin.com/jobs/search/"
-    final_url = (
-        f"{base_url}?keywords={encoded_keywords}"
-        f"&location={encoded_location}"
-        f"&f_TPR=r604800"
-        f"&sortBy=DD"
-    )
-
-    # In a production scenario, we might add more filters if needed
-    return final_url
+    return rows
 
 
 def gradio_app():
     with gr.Blocks() as demo:
-        gr.Markdown("# Resume Analysis & LinkedIn Search (Last Week)")
+        gr.Markdown("# Single-Pass Resume Analysis & LinkedIn Scraping")
 
+        # --- Resume Parsing & Keyword Generation ---
         with gr.Row():
             with gr.Column():
-                # 1) File upload
-                resume_in = gr.File(label="Upload Resume (PDF or TXT)")
-                analyze_btn = gr.Button("Analyze Resume")
+                resume_in = gr.File(label="Upload Resume (PDF only)")
+                num_keywords_box = gr.Number(
+                    label="How many keyword combos?", value=20, precision=0
+                )
+                parse_btn = gr.Button("Analyze & Generate (ResumeParser)")
 
             with gr.Column():
-                # 2) Display extracted data (positions, location, yrs exp, skills)
-                positions_box = gr.Textbox(label="Positions (comma-separated)")
+                positions_box = gr.Textbox(label="Positions")
                 location_box = gr.Textbox(label="Location")
                 years_box = gr.Number(label="Years of Experience")
-                skills_box = gr.Textbox(label="Skills (comma-separated)")
+                skills_box = gr.Textbox(label="Skills")
+                combos_out = gr.Textbox(
+                    label="Keyword Combinations", lines=8, interactive=False
+                )
 
-        # Link the button to the parse function
-        analyze_btn.click(
-            fn=handle_resume_upload,
-            inputs=[resume_in],
-            outputs=[positions_box, location_box, years_box, skills_box],
+        # Callback: parse resume => user_data.json => display fields
+        parse_btn.click(
+            fn=handle_resume_with_resumeparser,
+            inputs=[resume_in, num_keywords_box],
+            outputs=[positions_box, location_box, years_box, skills_box, combos_out],
         )
 
-        # Additional custom keywords user might want
-        gr.Markdown("### Add Extra Search Keywords (optional)")
-        custom_keywords_box = gr.Textbox(label="Custom Keywords (comma-separated)")
+        gr.Markdown("### Scrape Job Listings")
 
-        # Build URL
-        build_btn = gr.Button("Build LinkedIn URL")
-        linkedin_url_out = gr.Textbox(
-            label="Resulting LinkedIn Search URL", interactive=False
+        # Let user specify how many URLs from search_url_list to process
+        scrape_limit_box = gr.Number(
+            label="Number of URLs to process", value=2, precision=0
         )
-
-        build_btn.click(
-            fn=build_linkedin_url,
-            inputs=[
-                positions_box,
-                location_box,
-                years_box,
-                skills_box,
-                custom_keywords_box,
+        scrape_btn = gr.Button("Scrape Jobs")
+        job_table_out = gr.DataFrame(
+            headers=[
+                "job_id",
+                "title",
+                "company",
+                "location",
+                "benefits",
+                "footer_tags",
+                "job_url",
             ],
-            outputs=[linkedin_url_out],
+            label="Scraped Jobs",
+            interactive=False,
+        )
+
+        # Callback: run LinkedInAutomation => gather_job_listings => show
+        scrape_btn.click(
+            fn=handle_scrape_jobs,
+            inputs=[scrape_limit_box],
+            outputs=[job_table_out],
         )
 
     return demo
