@@ -76,12 +76,12 @@ def gradio_app():
                 parse_btn = gr.Button("Analyze & Generate (ResumeParser)")
 
             with gr.Column():
-                positions_box = gr.Textbox(label="Positions")
-                location_box = gr.Textbox(label="Location")
-                years_box = gr.Number(label="Years of Experience")
-                skills_box = gr.Textbox(label="Skills")
+                positions_box = gr.Textbox(label="Positions", interactive=True)
+                location_box = gr.Textbox(label="Location", interactive=True)
+                years_box = gr.Number(label="Years of Experience", interactive=True)
+                skills_box = gr.Textbox(label="Skills", interactive=True)
                 combos_out = gr.Textbox(
-                    label="Keyword Combinations", lines=8, interactive=False
+                    label="Keyword Combinations", lines=8, interactive=True
                 )
 
         # Callback: parse resume => user_data.json => display fields
