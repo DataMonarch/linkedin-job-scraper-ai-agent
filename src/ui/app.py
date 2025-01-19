@@ -8,6 +8,8 @@ from automation.linkedin import LinkedInAutomation, USER_DATA_DIR
 
 USER_DATA_PATH = os.path.join(USER_DATA_DIR, "user_data.json")
 
+LI_AUTO = LinkedInAutomation(headless=False)
+
 
 def handle_resume_with_resumeparser(resume_file, num_keywords):
     """
@@ -43,7 +45,9 @@ def handle_scrape_jobs(search_rate_limit):
     Return results in a 2D list for display in a DataFrame.
     """
     li_auto = LinkedInAutomation(headless=False)  # or True if you prefer headless
+    initial_search_urls = li_auto.search_url_list
     job_data = li_auto.gather_job_listings(search_rate_limit=search_rate_limit)
+
     li_auto.close()
 
     # Convert job_data (list of dicts) => list of rows
@@ -59,7 +63,9 @@ def handle_scrape_jobs(search_rate_limit):
         job_url = job.get("job_url", "")
         rows.append([job_id, title, company, location, benefits, footer_tags, job_url])
 
-    return rows
+    return rows, [
+        [search_url] for search_url in initial_search_urls[:search_rate_limit]
+    ]
 
 
 def gradio_app():
@@ -70,18 +76,32 @@ def gradio_app():
         with gr.Row():
             with gr.Column():
                 resume_in = gr.File(label="Upload Resume (PDF only)")
-                num_keywords_box = gr.Number(
-                    label="How many keyword combos?", value=20, precision=0
-                )
-                parse_btn = gr.Button("Analyze & Generate (ResumeParser)")
-
-            with gr.Column():
                 positions_box = gr.Textbox(label="Positions", interactive=True)
-                location_box = gr.Textbox(label="Location", interactive=True)
-                years_box = gr.Number(label="Years of Experience", interactive=True)
                 skills_box = gr.Textbox(label="Skills", interactive=True)
+                with gr.Row():
+                    location_box = gr.Textbox(label="Location", interactive=True)
+                    years_box = gr.Number(label="Years of Experience", interactive=True)
                 combos_out = gr.Textbox(
                     label="Keyword Combinations", lines=8, interactive=True
+                )
+
+            with gr.Column():
+                num_keywords_box = gr.Number(
+                    label="How many keyword combos?", value=5, precision=0
+                )
+                parse_btn = gr.Button("Analyze & Generate (ResumeParser)")
+                gr.Markdown("### Scrape Job Listings")
+
+                # Let user specify how many URLs from search_url_list to process
+                scrape_limit_box = gr.Number(
+                    label="Number of URLs to process", value=2, precision=0
+                )
+                scrape_btn = gr.Button("Scrape Jobs")
+
+                urls_df = gr.DataFrame(
+                    headers=["Search URLs"],
+                    label="Generated LinkedIn Search URLs",
+                    interactive=False,
                 )
 
         # Callback: parse resume => user_data.json => display fields
@@ -91,13 +111,6 @@ def gradio_app():
             outputs=[positions_box, location_box, years_box, skills_box, combos_out],
         )
 
-        gr.Markdown("### Scrape Job Listings")
-
-        # Let user specify how many URLs from search_url_list to process
-        scrape_limit_box = gr.Number(
-            label="Number of URLs to process", value=2, precision=0
-        )
-        scrape_btn = gr.Button("Scrape Jobs")
         job_table_out = gr.DataFrame(
             headers=[
                 "job_id",
@@ -116,7 +129,7 @@ def gradio_app():
         scrape_btn.click(
             fn=handle_scrape_jobs,
             inputs=[scrape_limit_box],
-            outputs=[job_table_out],
+            outputs=[job_table_out, urls_df],
         )
 
     return demo
