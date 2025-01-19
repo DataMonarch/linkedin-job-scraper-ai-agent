@@ -165,7 +165,6 @@ class LinkedInAutomation:
             )
             return
 
-        last_scroll_height = 0
         scroll_count = 0
 
         while scroll_count < max_scroll_attempts:
@@ -281,6 +280,9 @@ class LinkedInAutomation:
             print(f"📃 >>> Found {len(job_cards)} job cards on this page.")
 
             for j, card in enumerate(job_cards):
+                card.evaluate("(el) => { el.style.outline = '3px solid red'; }")
+                # time.sleep(1)  # Optional short pause so the user can see the highlight
+
                 job_info = self._parse_single_card(card)
 
                 if job_info["job_id"] in scraped_job_ids:
