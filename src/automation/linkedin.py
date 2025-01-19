@@ -18,11 +18,12 @@ class LinkedInAutomation:
         self.browser_mgr = BrowserManager(headless=self.headless)
         self.search_url_list: list[str] = []
         self.build_search_list(days=7)
+        self.base_platform_url = "https://www.linkedin.com/jobs/"
 
     def login_and_check(self):
         """User manually logs in, then we check something like the user profile icon."""
         page = self.browser_mgr.launch()
-        page.goto("https://www.linkedin.com/jobs/")
+        page.goto(self.base_platform_url)
 
         # logged_in = False
         # while not logged_in:
@@ -136,6 +137,9 @@ class LinkedInAutomation:
                 if title_link:
                     title_text = title_link.inner_text().strip()
                     job_url = title_link.get_attribute("href")
+                    # Build the full URL if it's a relative path
+                    if job_url.startswith("/"):
+                        job_url = urllib.parse.urljoin(self.base_platform_url, job_url)
 
                 company_span = card.query_selector(
                     "div.artdeco-entity-lockup__subtitle span"
