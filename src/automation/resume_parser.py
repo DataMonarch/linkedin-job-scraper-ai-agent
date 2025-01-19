@@ -4,7 +4,7 @@ from typing import List
 
 import fitz  # pymupdf
 
-from src.agent.intelligence import extract_info_and_keywords
+from agent.intelligence import extract_info_and_keywords
 
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 SAVE_DIR = os.path.join(CURRENT_DIR, "../data")
@@ -58,8 +58,9 @@ class ResumeParser:
         if not resume_file:
             return "", "", 0, "", ""
 
-        doc_text = self.parse_pdf_to_text(resume_file)
+        doc_text = self.parse_pdf_to_text()
         if not doc_text.strip():
+            print("No text found in PDF.")
             return "", "", 0, "", "No text found in PDF."
 
         # Single pass to get everything
@@ -102,3 +103,5 @@ class ResumeParser:
         # Save the extracted data to a json file
         with open(os.path.join(SAVE_DIR, "user_data.json"), "w") as f:
             json.dump(user_data, f)
+
+        return user_data
