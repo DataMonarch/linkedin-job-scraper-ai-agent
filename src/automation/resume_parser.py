@@ -90,10 +90,14 @@ class ResumeParser:
 
         # Convert years experience to integer if possible
         years_exp_str = user_data.get("years_experience", "")
-        try:
-            years_experience_int = int(years_exp_str.split()[0])
-        except:
-            years_experience_int = 0
+        if isinstance(years_exp_str, str):
+            if " " in years_exp_str:
+                years_exp_str = years_exp_str.split()[0]
+            years_experience_int = int(years_exp_str.strip())
+        elif isinstance(years_exp_str, int):
+            years_experience_int = years_exp_str
+        else:
+            print(f"\n❗  [AGENT] Invalid years experience: {years_exp_str}")
 
         # Convert the list of combos to a multiline string
         keyword_sets = results["keyword_sets"]
@@ -107,8 +111,14 @@ class ResumeParser:
             "keyword_combinations": combos_str,
         }
 
+        user_data_path = os.path.join(SAVE_DIR, "user_data.json")
+
+        print(
+            f"\n👤  [AGENT] All necessary user data has been obtained and saved at: {user_data_path}"
+        )
+
         # Save the extracted data to a json file
-        with open(os.path.join(SAVE_DIR, "user_data.json"), "w") as f:
+        with open(user_data_path, "w") as f:
             json.dump(user_data, f)
 
         return user_data

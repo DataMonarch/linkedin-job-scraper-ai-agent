@@ -155,7 +155,7 @@ def parse_mhop_extracted_info(llm_outputs: List[str]) -> Dict[str, Any]:
         for company in companies:
             job_info = {
                 "Company": company,
-                "Job Title": companies_info[company].get("Positions", []),
+                "Positions": companies_info[company].get("Positions", []),
                 "Start Date": companies_info[company].get("Start Date", ""),
                 "End Date": companies_info[company].get("End Date", ""),
                 "Relevant Skills": companies_info[company].get("Relevant Skills", []),

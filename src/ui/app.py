@@ -1,10 +1,37 @@
-import os
 import json
+import os
+import subprocess
+import sys
 from typing import List
+
 import gradio as gr
 
+from automation.linkedin import USER_DATA_DIR, LinkedInAutomation
 from automation.resume_parser import ResumeParser
-from automation.linkedin import LinkedInAutomation, USER_DATA_DIR
+
+
+def open_chrome_with_remote_debugging():
+    # Define the command based on the operating system
+    if sys.platform == "win32":
+        # Windows
+        chrome_path = "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
+        command = f'"{chrome_path}" --remote-debugging-port=9222'
+    elif sys.platform == "darwin":
+        # macOS
+        chrome_path = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+        command = f'"{chrome_path}" --remote-debugging-port=9222'
+    else:
+        # Linux and other platforms
+        chrome_path = "google-chrome"
+        command = f"{chrome_path} --remote-debugging-port=9222"
+
+    try:
+        # Launch Chrome with remote debugging
+        subprocess.Popen(command, shell=True)
+        print("\n🎮  [AGENT] Chrome launched with remote debugging on port 9222.")
+    except Exception as e:
+        print(f"\n🎮  [AGENT] Failed to launch Chrome: {e}")
+
 
 USER_DATA_PATH = os.path.join(USER_DATA_DIR, "user_data.json")
 
@@ -46,6 +73,8 @@ def handle_scrape_jobs(search_rate_limit):
     Instantiate LinkedInAutomation and gather job listings up to 'search_rate_limit' URLs.
     Return results in a 2D list for display in a DataFrame.
     """
+    open_chrome_with_remote_debugging()
+
     li_auto = LinkedInAutomation(headless=False)  # or True if you prefer headless
     initial_search_urls = li_auto.search_url_list
     job_data = li_auto.gather_job_listings(search_rate_limit=search_rate_limit)
