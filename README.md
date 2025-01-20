@@ -117,11 +117,11 @@ Below are some placeholders for images or GIFs showing the process:
 
 ### Dashboard (Resume Analysis & Scraping)
 
-[Insert screenshot here]
+![demos/dashboard.png](demos/dashboard.png)
 
 ### Terminal Logs
 
-[Insert screenshot here]
+![demos/terminal.png](demos/terminal.png)
 
 ## How It Works
 
