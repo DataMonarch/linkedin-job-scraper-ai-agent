@@ -45,19 +45,53 @@ Do not generate additional text or commentary. Follow the format strictly.
 {resume_text}"""
 
 
-KEYWORD_GEN_SYSTEM_PROMPT = (
-    "You are a helpful assistant that specializes in job search optimization. "
-    "You will receive a resume text and must generate exactly {} sets of keyword combinations. "
-    "Each set should be relevant for LinkedIn job searches, focusing on job titles, skills, technologies, etc. Main focus should be o the job titles."
-    "Return them as a numbered list, with one combination per line. Do not add extra commentary."
-)
+KEYWORD_GEN_SYSTEM_PROMPT = """
+    You are a highly specialized assistant with a single task:
+    - Generate exactly K sets of keyword combinations for job searching based on the provided work history and main job search focus. Each set should contain multiple relevant job titles, technologies, and skills extrapolated to the job market.
 
-KEYWORD_GEN_USER_PROMPT = (
-    "<Resume Contents>\n{}\n\n"
-    "<Instructions>\nPlease produce 20 distinct keyword combinations for LinkedIn job searches "
-    "most likely to yield relevant job results, based on the above resume."
-)
+    Output Format (strict JSON, no extra text):
+    ``` json
+    {{
+        "keyword_sets": [
+            "Job Title 1, Skill 1, Technology 1, Skill 2",
+            "Job Title 2, Skill 3, Technology 2, Skill 4",
+            ...
+        ]
+    }}
+    ```
+    Ensure the following:
+    - Each keyword set should be a comma-separated list of related terms.
+    - The terms should be relevant to the provided work history and the main job search focus.
+    - Generate exactly K sets of keywords, as specified in the user prompt.
+    - Do not include any additional information or commentary beyond the specified JSON format.
+"""
 
+KEYWORD_GEN_USER_PROMPT = """
+    <Work History>
+    {work_history}
+    </Work History>
+
+    <Main Job Search Focus>
+    {main_job_search_focus}
+    </Main Job Search Focus>
+
+    <Instructions>
+    1. Analyze the provided work history and the main job search focus.
+    2. Generate exactly {k} sets of keyword combinations for job searching. Each set should contain multiple relevant job titles, technologies, and skills extrapolated to the job market.
+    3. Format the output as a JSON object with the following structure:
+    ``` json
+    {{
+    "keyword_sets": [
+        "Job Title 1, Skill 1, Technology 1, Skill 2",
+        "Job Title 2, Skill 3, Technology 2, Skill 4",
+        ...
+    ]
+    }}
+    ```
+    4. Ensure the keyword sets are relevant to the work history and the main job search focus.
+    5. Do not include any additional information or commentary beyond the specified JSON format.
+    </Instructions>
+"""
 
 SMALL_EXTRACTOR_SYSTEM_PROPMPT = """You are a specialized text-parsing assistant. 
     Your sole task is to parse a provided resume and extract requested data. 
@@ -177,9 +211,9 @@ SMALL_LOCATION_EXTRACTOR_SYSTEM_PROMPT = """You are an expert resume parser. You
 
 Return the extracted location in the following JSON format:
 ```json
-    {
+    {{
     "current_location": "City, State, Country"
-    }
+    }}
 ```
 Ensure the following:
 - Extract the most recent or relevant location mentioned (e.g., under contact information, address, or recent work experience).
@@ -189,29 +223,29 @@ Ensure the following:
 
 SMALL_LOCATION_EXTRACTOR_USER_PROMPT = """
 <Resume Text>
-{}
+{resume_text}
 </Resume Text>
 
 <Instructions>
 1. The location should include the city, state, and/or country, depending on what is available.
 2. Return the extracted location in the following JSON format:
     ```json
-        {
+        {{
         "current_location": "City, State, Country"
-        }
+        }}
     ```
 3. If no location is found, return:
     ```json
-        {
+        {{
         "current_location": "None"
-        }
+        }}
     ```
 4. Focus on the most recent or relevant location mentioned (e.g., under contact information, address, or recent work experience).
 5. Do not include any additional information beyond the specified format.
 
 Example Output:
-{
+{{
   "current_location": "San Francisco, California, USA"
-}
+}}
 </Instructions>
 """

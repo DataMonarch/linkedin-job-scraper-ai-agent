@@ -1,6 +1,7 @@
 # Local imports
 import json
 import re
+import time
 from typing import Any, Dict, List, Union
 
 import urllib
@@ -108,7 +109,7 @@ def parse_llm_json_output(llm_output: str) -> Union[Dict[str, Any], None]:
     if json_start == -1 or json_end == -1:
         return None
     extracted_dict: str = llm_output[json_start : json_end + 1]
-    extracted_dict: dict = json.loads(llm_output)
+    extracted_dict: dict = json.loads(extracted_dict)
 
     return extracted_dict
 
@@ -126,6 +127,19 @@ def parse_mhop_location_info(llm_output: str) -> Dict[str, str]:
     return current_location
 
 
+def parse_mhop_keywords_sets(llm_output: str) -> List[str]:
+    """
+    Parse the keyword information from the LLM response.
+    The LLM response should be a JSON object with the following keys:
+      - "keyword_sets": ...
+    """
+    extracted_info = parse_llm_json_output(llm_output)
+
+    keyword_sets = extracted_info.get("keyword_sets", [])
+
+    return keyword_sets
+
+
 def parse_mhop_extracted_info(llm_outputs: List[str]) -> Dict[str, Any]:
     work_history = []
 
@@ -137,7 +151,17 @@ def parse_mhop_extracted_info(llm_outputs: List[str]) -> Dict[str, Any]:
         companies_info: dict = extracted_dict.get("company_names", {})
         companies = list(companies_info.keys())
 
-        work_history_current_chunk = [companies_info[company] for company in companies]
+        work_history_current_chunk = []
+        for company in companies:
+            job_info = {
+                "Company": company,
+                "Job Title": companies_info[company].get("Positions", []),
+                "Start Date": companies_info[company].get("Start Date", ""),
+                "End Date": companies_info[company].get("End Date", ""),
+                "Relevant Skills": companies_info[company].get("Relevant Skills", []),
+            }
+            work_history_current_chunk.append(job_info)
+
         work_history.extend(work_history_current_chunk)
 
     work_history_start_year = 3000
@@ -151,8 +175,11 @@ def parse_mhop_extracted_info(llm_outputs: List[str]) -> Dict[str, Any]:
             job_start_year = int(start_date.split("/")[-1])
             work_history_start_year = min(work_history_start_year, job_start_year)
         if end_date:
-            job_end_year = int(end_date.split("/")[-1])
-            work_history_end_year = max(work_history_end_year, job_end_year)
+            if end_date.lower() == "present":
+                work_history_end_year = time.localtime().tm_year
+            else:
+                job_end_year = int(end_date.split("/")[-1])
+                work_history_end_year = max(work_history_end_year, job_end_year)
 
     total_experience = work_history_end_year - work_history_start_year
 
@@ -207,6 +234,7 @@ def extract_info_and_keywords(
     provider: str = "openai",
     ollama_model: str = "llama3.2",
     openai_model: str = "gpt-4",
+    main_job_search_focus: str = "Software Engineering",
 ) -> Dict[str, any]:
     """
     Single-pass LLM call:
@@ -234,13 +262,17 @@ def extract_info_and_keywords(
     if provider == "openai":
         location_response = call_llm(
             system_prompt=SMALL_LOCATION_EXTRACTOR_SYSTEM_PROMPT,
-            user_prompt=SMALL_LOCATION_EXTRACTOR_USER_PROMPT.format(resume_text),
+            user_prompt=SMALL_LOCATION_EXTRACTOR_USER_PROMPT.format(
+                resume_text=resume_text
+            ),
             provider=provider,
             ollama_model=ollama_model,
         )
 
         current_location = parse_mhop_location_info(location_response)
         user_data["current_location"] = current_location
+
+        print("\n📝  [AGENT] Location extracted")
 
         llm_response = call_llm(
             system_prompt=SMALL_INFO_EXTRACTOR_SYSTEM_PROMPT,
@@ -252,7 +284,9 @@ def extract_info_and_keywords(
 
         work_history, total_experience = parse_mhop_extracted_info([llm_response])
         user_data["work_history"] = work_history
+        print("\n📝  [AGENT] Work history extracted")
         user_data["years_experience"] = total_experience
+        print("\n📝  [AGENT] Years of experience extracted")
     # TODO: Add support for Ollama
     elif provider == "ollama":
         tokenized_spans = list(WORD_TOKENIZER.span_tokenize(resume_text))
@@ -299,30 +333,40 @@ def extract_info_and_keywords(
         llm_response = parse_mhop_extracted_info(llm_outputs)
 
     # Debug
-    print("[DEBUG] LLM Combined Output:\n", llm_response)
+    print("\n📝  [AGENT] User info extracted")
+
+    print("\n🔍 [AGENT] Generating keyword sets...")
+
+    keyword_request_response = call_llm(
+        system_prompt=KEYWORD_GEN_SYSTEM_PROMPT,
+        user_prompt=KEYWORD_GEN_USER_PROMPT.format(
+            work_history=user_data.get("work_history", ""),
+            main_job_search_focus=main_job_search_focus,
+            k=k,
+        ),
+        provider=provider,
+        openai_model=openai_model,
+    )
 
     # Parse the k sets
-    keyword_sets = parse_gpt_keyword_sets(llm_response, k)
+    keyword_sets = parse_mhop_keywords_sets(keyword_request_response)
 
-    # Optionally build a LinkedIn URL for each set
-    # We can incorporate the user's location from 'parsed_fields' if desired
-    location = parsed_fields.get("current_location", "")
-    # Or parse location out if it's e.g. "New York"
+    print("\n📝  [AGENT] Keyword sets generated")
+
     posted_in_days = 7
 
+    print("\n🔗  [AGENT] Generating LinkedIn URLs...")
     keyword_urls = []
-    for line in keyword_sets:
-        # Remove "1) ", "2) " prefix, if it exists
-        # E.g. "1) Software Engineer, Python, Cloud"
-        # We'll do a quick regex or parse
-        cleaned_line = re.sub(r"^\d+\)\s*", "", line)
+    for keyword_set in keyword_sets:
         url = build_linkedin_url(
-            cleaned_line, location=location, posted_in_days=posted_in_days
+            keyword_set, location=current_location, posted_in_days=posted_in_days
         )
         keyword_urls.append(url)
 
+    print("\n🔗  [AGENT] LinkedIn URLs generated")
+
     return {
-        "parsed_fields": parsed_fields,
+        "user_data": user_data,
         "keyword_sets": keyword_sets,
         "keyword_urls": keyword_urls,
     }
