@@ -214,6 +214,9 @@ class LinkedInAutomation:
         company_text = company_span.inner_text().strip() if company_span else ""
         company_text = company_text.split("\n")[0].strip()
 
+        if "\n" in company_text:
+            company_text = company_text.split("\n")[0].strip()
+
         location_li = card.query_selector(
             "div.artdeco-entity-lockup__caption ul.job-card-container__metadata-wrapper li"
         )
