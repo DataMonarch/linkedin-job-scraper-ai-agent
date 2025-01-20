@@ -11,7 +11,7 @@ USER_DATA_PATH = os.path.join(USER_DATA_DIR, "user_data.json")
 LI_AUTO = LinkedInAutomation(headless=False)
 
 
-def handle_resume_with_resumeparser(resume_file, num_keywords):
+def handle_resume_with_resumeparser(resume_file, num_keywords, main_job_search_focus):
     """
     1. Create a ResumeParser instance
     2. Call extract_keywords_for_search() => writes user_data.json
@@ -21,7 +21,9 @@ def handle_resume_with_resumeparser(resume_file, num_keywords):
         return "", "", 0, "", ""
 
     parser = ResumeParser(resume_file, num_keywords)
-    parser.extract_keywords_for_search()  # saves user_data.json
+    parser.extract_keywords_for_search(
+        main_job_search_focus=main_job_search_focus
+    )  # saves user_data.json
 
     # read user_data.json
     if not os.path.exists(USER_DATA_PATH):
@@ -86,6 +88,9 @@ def gradio_app():
                 )
 
             with gr.Column():
+                main_job_search_focus = gr.Textbox(
+                    label="Main Job Search Focus", placeholder="e.g. Data Science"
+                )
                 num_keywords_box = gr.Number(
                     label="How many keyword combos?", value=5, precision=0
                 )
@@ -107,7 +112,7 @@ def gradio_app():
         # Callback: parse resume => user_data.json => display fields
         parse_btn.click(
             fn=handle_resume_with_resumeparser,
-            inputs=[resume_in, num_keywords_box],
+            inputs=[resume_in, num_keywords_box, main_job_search_focus],
             outputs=[positions_box, location_box, years_box, skills_box, combos_out],
         )
 
