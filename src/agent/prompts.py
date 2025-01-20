@@ -57,3 +57,105 @@ KEYWORD_GEN_USER_PROMPT = (
     "<Instructions>\nPlease produce 20 distinct keyword combinations for LinkedIn job searches "
     "most likely to yield relevant job results, based on the above resume."
 )
+
+
+SMALL_EXTRACTOR_SYSTEM_PROPMPT = """You are a specialized text-parsing assistant. 
+    Your sole task is to parse a provided resume and extract requested data. 
+    You must output only the requested information, with no extra commentary or explanations.
+	"""
+SMALL_EXTRACTOR_USER_PROPMPT = """
+    <RESUME TEXT START>
+    {}
+    <RESUME TEXT END>
+
+    <INSTRUCTIONS START>
+    1. Read the entire resume text above. 
+    2. Extract the **employment history** (job positions, start dates, end dates).
+    3. Present the results in reverse-chronological order (most recent job first).
+    4. For each position, use the exact output format below:
+        * [job_position] - [start_date] - [end_date]
+    5. If an end date is ongoing or missing, use "Present". If any date is not found, use "N/A".
+    6. Provide **no other text** besides these bullet points (no commentary, no disclaimers).
+    <INSTRUCTIONS END>
+
+    """
+
+SMALL_SUMMARIZER_SYSTEM_PROMPT = """You are a highly specialized assistant with a single task:
+    - Summarize resume and CV content in a concise manner. Provide a summary of every single job position held in the resume and every single academic performance.
+    """
+SMALL_SUMMARIZER_USER_PROMPT = """
+    <Resume Text>
+        {}
+
+    <Instructions>
+        As a specialized assistant, you are tasked with summarizing the resume and CV content in a concise manner. Provide a summary of every single job position held in the resume and every single academic performance.
+
+        As a hint, summarize the job positions and academic performances in a few sentences each.
+    """
+
+SMALL_DATE_EXTRACTOR_SYSTEM_PROMPT = """You are a highly specialized assistant with a single task:
+- Extract the dates related to all job positions held in the resume.
+"""
+SMALL_DATE_EXTRACTOR_USER_PROMPT = """
+    <Resume Text>
+        {}
+
+    <Instructions>
+        As a specialized assistant, you are tasked with extracting the dates related to all job positions held in the resume.
+
+        As a hint, look for the start and end dates of each job position.
+
+    """
+
+SMALL_INFO_EXTRACTOR_SYSTEM_PROMPT = """You are an expert resume parser. Your task is to extract only the company and job position names from the WORK EXPERIENCE or EXPERIENCE sections of the provided resume text. Return the extracted company and job position names in a JSON array formatted as follows:
+    {{
+        "company_names": {{
+            "Company Name 1": {{"Positions": ["Job Position 1", "Job Position 2"],
+                                "Start Date": "Month Year",
+                                "End Date": "Month Year"}},
+            "Company Name 2": {{"Positions": ["Job Position 1", "Job Position 2"],
+                                "Start Date": "Month Year",
+                                "End Date": "Month Year"}},
+            ...
+        }}
+    }}
+
+Ensure the following:
+- Extract only company names and job positions associated with the company.
+- If no company names are found, return an empty array.
+- Do not include any additional information or details.
+
+"""
+SMALL_INFO_EXTRACTOR_USER_PROMPT = """
+    <Resume Text>
+    {}
+    </Resume Text>
+
+    <Instructions>
+    1. Analyze the resume text above and extract the WORK EXPERIENCE section.
+    2. For each company, extract:
+    - Company Name
+    - Positions held at the company (as a list)
+    - Start Date (in "Month Year" format)
+    - End Date (in "Month Year" format, or "Present" if the position is ongoing)
+    3. Format the extracted information as a JSON object, structured as follows:
+    {{
+    "company_names": {{
+        "Company Name 1": {{
+        "Positions": ["Job Position 1", "Job Position 2"],
+        "Start Date": "Month Year",
+        "End Date": "Month Year"
+        }},
+        "Company Name 2": {{
+        "Positions": ["Job Position 1"],
+        "Start Date": "Month Year",
+        "End Date": "Month Year"
+        }},
+        ...
+    }}
+    }}
+    4. Start with the most recent job position and group multiple positions under the same company name if applicable.
+    5. If dates are missing, leave them as empty strings ("").
+    6. Do not include any additional information beyond the specified format.
+    </Instructions>
+    """
