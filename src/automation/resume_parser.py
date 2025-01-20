@@ -44,6 +44,7 @@ class ResumeParser:
         self,
         provider: str = "openai",
         openai_model: str = "gpt-4",
+        main_job_search_focus: str = "Data Scientist",
     ) -> None:
         """
         1) Reads the PDF text from the uploaded file
@@ -70,33 +71,39 @@ class ResumeParser:
             k=k,
             provider=provider,
             openai_model=openai_model,
+            main_job_search_focus=main_job_search_focus,
         )
 
         # Extract fields
-        parsed = results[
-            "parsed_fields"
+        user_data = results[
+            "user_data"
         ]  # {positions, current_location, years_experience, skills}
-        positions_str = parsed.get("positions", "")
-        location_str = parsed.get("current_location", "")
+        work_history = user_data["work_history"]
+        current_location = user_data.get("current_location", "")
+
+        positions = []
+        skills = []
+
+        for job in work_history:
+            positions.extend(job["Positions"])
+            skills.extend(job["Relevant Skills"])
 
         # Convert years experience to integer if possible
-        years_exp_str = parsed.get("years_experience", "")
+        years_exp_str = user_data.get("years_experience", "")
         try:
             years_experience_int = int(years_exp_str.split()[0])
         except:
             years_experience_int = 0
-
-        skills_str = parsed.get("skills", "")
 
         # Convert the list of combos to a multiline string
         keyword_sets = results["keyword_sets"]
         combos_str = "\n".join(keyword_sets) if keyword_sets else ""
 
         user_data = {
-            "positions": positions_str,
-            "location": location_str,
+            "positions": ", ".join(positions),
+            "location": current_location,
             "years_experience": years_experience_int,
-            "skills": skills_str,
+            "skills": ", ".join(skills),
             "keyword_combinations": combos_str,
         }
 
