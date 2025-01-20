@@ -71,6 +71,19 @@ This project automates the process of:
    # On Windows: set OPENAI_API_KEY=sk-xxxxxx
    ```
 
+4. Add the src directory to PYTHONPATH:
+
+   ```bash
+    # Linux/MacOS
+    export PYTHONPATH=$PYTHONPATH:$(pwd)/src
+
+    # Windows (Command Prompt)
+    set PYTHONPATH=%PYTHONPATH%;%cd%\src
+
+    # Windows (PowerShell)
+    $env:PYTHONPATH = "$env:PYTHONPATH;$(pwd)\src"
+   ```
+
 Ensure Chrome is installed. The script will attempt to launch Chrome with `--remote-debugging-port=9222`.
 
 ## Usage
