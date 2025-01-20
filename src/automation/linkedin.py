@@ -11,6 +11,7 @@ from automation.browser import BrowserManager
 
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 USER_DATA_DIR = os.path.join(CURRENT_DIR, "..", "data")
+USER_DATA_PATH = os.path.join(USER_DATA_DIR, "user_data.json")
 JOBS_DATA_PATH = os.path.join(USER_DATA_DIR, "jobs_data.json")
 
 
@@ -21,6 +22,7 @@ class LinkedInAutomation:
         self.browser_mgr = BrowserManager(headless=self.headless)
         self.search_url_list: list[str] = []
         self.build_search_list(days=7)
+        self.user_data = json.load(open(USER_DATA_PATH))
 
     def login_and_check(self):
         """User manually logs in, then we check something like the user profile icon.
@@ -49,10 +51,10 @@ class LinkedInAutomation:
         #         # The element wasn't found within 3 seconds; user still logging in
         #         # or there's a slow network. Sleep briefly and try again.
         #         time.sleep(2)
-        #         print("User is still logging in...")
+        #         print("\nUser is still logging in...")
         #         print(e)
 
-        print("User is logged in successfully.")
+        print("\nUser is logged in successfully.")
         return page
 
     def build_linkedin_url(
@@ -144,7 +146,7 @@ class LinkedInAutomation:
             page.wait_for_selector(container_selector, timeout=5000)
         except TimeoutError:
             print(
-                f"⚠️ >>> Scrollable container not found for selector: {container_selector}"
+                f"⚠️  >>> Scrollable container not found for selector: {container_selector}"
             )
             return
 
@@ -155,13 +157,13 @@ class LinkedInAutomation:
 
         if not has_scroll:
             print(
-                f"⚠️ >>> Scrollable container not found for selector: {container_selector}"
+                f"⚠️  >>> Scrollable container not found for selector: {container_selector}"
             )
             return
 
         if not scrollable_container:
             print(
-                f"⚠️ >>> Scrollable container not found for selector: {container_selector}"
+                f"⚠️  >>> Scrollable container not found for selector: {container_selector}"
             )
             return
 
@@ -178,16 +180,16 @@ class LinkedInAutomation:
             new_height = scrollable_container.evaluate("(el) => el.scrollHeight")
 
             print(
-                f"[SCROLL] Scrolled to {new_height} pixels from {current_height} pixels."
+                f"⬇️  [SCROLL] Scrolled to {new_height} pixels from {current_height} pixels."
             )
 
             if new_height == current_height:
-                print("[SCROLL] Reached bottom or no further content.")
+                print("\n⛔ [SCROLL] Reached bottom or no further content.")
                 break
 
             scroll_count += 1
 
-        print(f"[SCROLL] Completed {scroll_count} scroll attempts in container.")
+        print(f"\n✅ [SCROLL] Completed {scroll_count} scroll attempts in container.")
 
     def _parse_single_card(self, card) -> Dict[str, Any]:
         """
@@ -243,6 +245,227 @@ class LinkedInAutomation:
         }
         return job_info
 
+    def _extract_and_classify_fields(self, page: Page) -> List[Dict[str, Any]]:
+        """
+        Collects all form fields on the Easy Apply step, classifies them, and returns
+        a list of dictionaries with {'label': str, 'element': ElementHandle, 'type': str }.
+        We'll skip certain fields by default (email, phone, resume).
+        """
+
+        # Identify the container that holds the form, from your snippet it might be `form`
+        form_selector = "form"
+        form_elm = page.query_selector(form_selector)
+        if not form_elm:
+            print("\n[EXTRACT] No <form> found on this step.")
+            return []
+
+        fields_info = []
+        # We look for typical relevant elements:
+        input_selectors = "input, select, textarea"
+        input_elems = form_elm.query_selector_all(input_selectors)
+
+        for elem in input_elems:
+            # Classify this element
+            ftype = self._classify_field(elem)
+            # Extract label text if any
+            label_txt = self._get_label_for_field(elem, form_elm)
+
+            # If the label or placeholder is in our skip logic, we do NOT add it.
+            if self._should_skip_field(label_txt, ftype):
+                print(f"\n[SKIP] Skipping field '{label_txt}' of type '{ftype}'.")
+                continue
+
+            fields_info.append(
+                {
+                    "label": label_txt,
+                    "element": elem,
+                    "type": ftype,
+                }
+            )
+
+        return fields_info
+
+    def _classify_field(self, elem) -> str:
+        """
+        Basic classification by tagName/type attribute:
+        - "text" => input[text], textarea
+        - "dropdown" => select
+        - "file" => input[file]
+        - ...
+        """
+        tag_name = elem.evaluate("(el) => el.tagName.toLowerCase()")
+        input_type = elem.get_attribute("type") or ""
+
+        if tag_name == "select":
+            return "dropdown"
+        if tag_name == "textarea":
+            return "text"
+        if input_type in ["text", "tel", "email", "number"]:
+            return "text"
+        if input_type == "file":
+            return "file"
+        # fallback
+        return "text"
+
+    def _get_label_for_field(self, field_elm, form_elm) -> str:
+        """
+        Try to find the label text that belongs to this field.
+        In your snippet, we see <label for="..."> or
+        the label might be an immediate sibling or parent block with the text.
+
+        We'll attempt the simplest approach:
+        1) If 'id' is set on the field, check <label for="that id">.
+        2) Otherwise, read the nearest .fb-dash-form-element__label or .artdeco-text-input--label
+        """
+        field_id = field_elm.get_attribute("id")
+        if field_id:
+            label = form_elm.query_selector(f"label[for='{field_id}']")
+            if label:
+                return label.inner_text().strip()
+
+        # fallback: maybe check parent .fb-dash-form-element__label
+        possible_label = field_elm.query_selector(
+            "xpath=./ancestor::div[contains(@class,'fb-dash-form-element')]//label"
+        )
+        if possible_label:
+            return possible_label.inner_text().strip()
+
+        # fallback: placeholder
+        placeholder = field_elm.get_attribute("placeholder")
+        if placeholder:
+            return placeholder.strip()
+
+        return "Unknown Field"
+
+    def _should_skip_field(self, label_text: str, field_type: str) -> bool:
+        """
+        Return True if we want to skip this field (email, phone, resume, etc.).
+        We'll do partial match checks for safe measure.
+        """
+        label_lower = label_text.lower()
+        if any(
+            keyword in label_lower for keyword in ["email", "phone", "mobile", "resume"]
+        ):
+            return True
+        # or skip file fields by type
+        if field_type == "file":
+            return True
+        return False
+
+    def _fill_fields(self, page: Page):
+        """
+        Extract and fill all fields in the current form step, skipping email/phone/resume.
+        """
+        fields_info = self._extract_and_classify_fields(page)
+
+        for field in fields_info:
+            label = field["label"]
+            elem = field["element"]
+            ftype = field["type"]
+            # Some logic to produce an answer for each
+            # For example, you might ask an LLM or just fill them with placeholders
+            # We'll do a simple approach for demonstration
+            answer = self._generate_answer_for_field(label, ftype)
+            # Actually fill
+            if ftype == "text":
+                elem.fill(answer)
+            elif ftype == "dropdown":
+                self._select_dropdown_option(elem, answer)
+            # add logic for checkboxes, radios, etc. if needed
+
+    def _generate_answer_for_field(self, label: str, ftype: str) -> str:
+        """
+        Return a default answer or query an LLM.
+        For demonstration, just return a placeholder for text or pick the first dropdown item.
+        """
+
+        # TODO: Add LLM logic here for real answers
+        if ftype == "text":
+            if "years" in label.lower():
+                print("\n🔍 [ANSWER] Years of experience.")
+                return self.user_data.get("years_experience", "0")
+
+        elif ftype == "dropdown":
+            return "United States (+1)"  # or some logic
+        return ""
+
+    def _select_dropdown_option(self, dropdown_elm, desired_text: str):
+        """
+        Finds an <option> whose text includes 'desired_text' and selects it.
+        """
+        options = dropdown_elm.query_selector_all("option")
+        for opt in options:
+            txt = opt.inner_text().strip()
+            if desired_text.lower() in txt.lower():
+                val = opt.get_attribute("value")
+                if val:
+                    dropdown_elm.select_option(val)
+                    return
+        # fallback: select first if no match
+        if options:
+            first_val = options[0].get_attribute("value")
+            if first_val:
+                dropdown_elm.select_option(first_val)
+
+    def _apply_to_job(self, job_url: str, page: Page):
+        """
+        Navigates to the given job URL, looks for an Easy Apply button,
+        and attempts to fill out the multi-step application form.
+
+        Args:
+            job_url (str): The URL of the job detail page.
+            page (Page): The currently active Playwright page.
+        """
+        # 1) Go to the job detail URL
+        print(f"\n[EASY APPLY] Navigating to job URL: {job_url}")
+        page.goto(job_url, timeout=60_000)
+        time.sleep(2)
+
+        # 2) Check for the Easy Apply button
+        # Typical selectors might be 'button.jobs-apply-button' or a data-control-name
+        easy_apply_btn_selector = "button.jobs-apply-button"
+        try:
+            page.wait_for_selector(easy_apply_btn_selector, timeout=5000)
+        except TimeoutError:
+            print(f"\n⚠️  [EASY APPLY] No Easy Apply button found for job: {job_url}")
+            return
+
+        easy_apply_btn = page.query_selector(easy_apply_btn_selector)
+        if not easy_apply_btn:
+            print(f"\n⚠️  [EASY APPLY] No Easy Apply button found for job: {job_url}")
+            return
+
+        easy_apply_btn.click()
+        time.sleep(2)
+
+        form_completed = False
+
+        while not form_completed:
+            next_btn = page.query_selector("button[aria-label='Continue to next step']")
+            review_btn = page.query_selector(
+                "button[aria-label='Review your application']"
+            )
+            submit_btn = page.query_selector("button[aria-label='Submit application']")
+
+            if submit_btn:
+                print("\n✅ [EASY APPLY] Submitting application.")
+                submit_btn.click()
+                form_completed = True
+                time.sleep(2)
+            elif review_btn:
+                print("\n🔄 [EASY APPLY] Reviewing application.")
+                review_btn.click()
+                time.sleep(2)
+            elif next_btn:
+                print("\n➡️ [EASY APPLY] Moving to next step.")
+                next_btn.click()
+                time.sleep(2)
+            else:
+                print(
+                    "\n⚠️  [EASY APPLY] No next/review/submit button. Possibly done or blocked."
+                )
+                form_completed = True
+
     def gather_job_listings(self, search_rate_limit: int = 2) -> List[Dict[str, Any]]:
         """
         For each URL in self.search_url_list:
@@ -261,7 +484,7 @@ class LinkedInAutomation:
         scraped_job_ids = set()
 
         for i, url in enumerate(self.search_url_list):
-            print(f"Navigating to {url}")
+            print(f"\n🌐 [NAVIGATION] Navigating to {url}")
             page.goto(url)
             time.sleep(2)
 
@@ -273,14 +496,14 @@ class LinkedInAutomation:
             try:
                 page.wait_for_selector(job_card_selector, timeout=5000)
             except TimeoutError:
-                print("⚠️ >>> Job cards not found on this page.")
+                print("\n⚠️  >>> Job cards not found on this page.")
                 continue
 
             job_cards = page.query_selector_all(
                 ".job-card-container"
             )  # or .job-card-container
 
-            print(f"📃 >>> Found {len(job_cards)} job cards on this page.")
+            print(f"\n📃 >>> Found {len(job_cards)} job cards on this page.")
 
             for j, card in enumerate(job_cards):
                 card.evaluate("(el) => { el.style.outline = '3px solid red'; }")
@@ -289,15 +512,18 @@ class LinkedInAutomation:
                 job_info = self._parse_single_card(card)
 
                 if job_info["job_id"] in scraped_job_ids:
-                    print(f"⚠️ [JOB PARSER] Skipping duplicate job: {job_info['title']}")
+                    print(
+                        f"\n⚠️  [JOB PARSER] Skipping duplicate job: {job_info['title']}"
+                    )
                     continue
                 else:
                     scraped_job_ids.add(job_info["job_id"])
 
                 all_jobs_data.append(job_info)
 
-                print("#" * 20 + f"\n Job {j + 1} \n" + "#" * 20)
-                print(job_info)
+                print(
+                    f"\n✅ [JOB PARSER] Scraped job {j + 1}/{len(job_cards)}: {job_info['title']}"
+                )
 
             if i == search_rate_limit - 1:
                 break
