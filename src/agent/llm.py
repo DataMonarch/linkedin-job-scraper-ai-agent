@@ -11,6 +11,8 @@ from agent.prompts import (
     SMALL_SUMMARIZER_USER_PROMPT,
     SMALL_DATE_EXTRACTOR_SYSTEM_PROMPT,
     SMALL_DATE_EXTRACTOR_USER_PROMPT,
+    SMALL_INFO_EXTRACTOR_SYSTEM_PROMPT,
+    SMALL_INFO_EXTRACTOR_USER_PROMPT,
 )
 
 
@@ -79,6 +81,13 @@ async def call_llm(
 
 async def main():
     import pymupdf as fitz
+    import nltk
+
+    nltk.download("punkt")
+
+    word_tokenizer = nltk.tokenize.TreebankWordTokenizer()
+
+    MAX_WORDS = 300
 
     current_dir = os.path.dirname(os.path.abspath(__file__))
     resume_file = os.path.join(current_dir, "..", "data", "resume.pdf")
@@ -92,39 +101,74 @@ async def main():
 
     doc = fitz.open(filename=resume_file)
     resume_text = ""
+    resume_chunks = []
     for page_num in range(len(doc)):
         page = doc.load_page(page_num)
         page_text = page.get_text(option="text")
-        resume_text += page_text
 
-    summary = await call_llm(
-        SMALL_SUMMARIZER_SYSTEM_PROMPT,
-        SMALL_SUMMARIZER_USER_PROMPT.format(resume_text),
-        provider="ollama",
-        ollama_model="llama3.2",
-    )
-    print("#" * 20 + "\nSUMMARY\n" + "#" * 20)
-    print(summary)
-    print("_" * 100)
-    response = await call_llm(
-        SMALL_EXTRACTOR_SYSTEM_PROPMPT,
-        SMALL_EXTRACTOR_USER_PROPMPT.format(resume_text),
-        provider="ollama",
-        ollama_model="llama3.2",
-    )
+        tokenized_spans = word_tokenizer.span_tokenize(page_text)
+        tokenized_spans = list(tokenized_spans)
+        num_chunks = len(tokenized_spans) // MAX_WORDS
+        for i in range(num_chunks):
+            start, end = (
+                tokenized_spans[i * MAX_WORDS][0],
+                tokenized_spans[(i + 1) * MAX_WORDS][1],
+            )
+            resume_chunks.append(page_text[start:end])
 
-    print("#" * 20 + "\nWORK EXPERIENCE\n" + "#" * 20)
-    print(response)
+        # Add the last chunk
+        resume_chunks.append(page_text[end:])
 
-    date_response = await call_llm(
-        SMALL_DATE_EXTRACTOR_SYSTEM_PROMPT,
-        SMALL_DATE_EXTRACTOR_USER_PROMPT.format(resume_text),
-        provider="ollama",
-        ollama_model="llama3.2",
-    )
+    # summary = await call_llm(
+    #     SMALL_SUMMARIZER_SYSTEM_PROMPT,
+    #     SMALL_SUMMARIZER_USER_PROMPT.format(resume_text),
+    #     provider="ollama",
+    #     ollama_model="llama3.2",
+    # )
+    # print("#" * 20 + "\nSUMMARY\n" + "#" * 20)
+    # print(summary)
+    # print("_" * 100)
+    # response = await call_llm(
+    #     SMALL_EXTRACTOR_SYSTEM_PROPMPT,
+    #     SMALL_EXTRACTOR_USER_PROPMPT.format(resume_text),
+    #     provider="ollama",
+    #     ollama_model="llama3.2",
+    # )
 
-    print("#" * 20 + "\nDATES\n" + "#" * 20)
-    print(date_response)
+    # print("#" * 20 + "\nWORK EXPERIENCE\n" + "#" * 20)
+    # print(response)
+
+    # date_response = await call_llm(
+    #     SMALL_DATE_EXTRACTOR_SYSTEM_PROMPT,
+    #     SMALL_DATE_EXTRACTOR_USER_PROMPT.format(resume_text),
+    #     provider="ollama",
+    #     ollama_model="llama3.2",
+    # )
+
+    # print("#" * 20 + "\nDATES\n" + "#" * 20)
+    # print(date_response)
+
+    for i, chunk in enumerate(resume_chunks):
+        print(f"🧩 [CHUNK {i}]\n {chunk}")
+
+        response = await call_llm(
+            SMALL_INFO_EXTRACTOR_SYSTEM_PROMPT,
+            SMALL_INFO_EXTRACTOR_USER_PROMPT.format(chunk),
+            provider="ollama",
+            ollama_model="llama3.2",
+        )
+        print("#" * 20 + "\nWORK EXPERIENCE\n" + "#" * 20)
+        print(response)
+
+    # company_response = await call_llm(
+    #     POISITION_NAME_EXTRACTOR_SYSTEM_PROMPT,
+    #     POISITION_NAME_EXTRACTOR_USER_PROMPT.format(resume_text),
+    #     provider="ollama",
+    #     ollama_model="llama3.2",
+    # )
+
+    # print("#" * 20 + "\nCOMPANIES\n" + "#" * 20)
+    # print(company_response)
 
 
 if __name__ == "__main__":
