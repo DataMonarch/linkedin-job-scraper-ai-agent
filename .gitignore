@@ -175,3 +175,6 @@ cython_debug/
 
 # Ignore playwright downloads and saved states
 playwright*/
+
+# Data folder
+*src/data/
