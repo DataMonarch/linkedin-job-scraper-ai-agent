@@ -107,21 +107,29 @@ SMALL_DATE_EXTRACTOR_USER_PROMPT = """
 
     """
 
-SMALL_INFO_EXTRACTOR_SYSTEM_PROMPT = """You are an expert resume parser. Your task is to extract only the company and job position names from the WORK EXPERIENCE or EXPERIENCE sections of the provided resume text. Return the extracted company and job position names in a JSON array formatted as follows:
+SMALL_INFO_EXTRACTOR_SYSTEM_PROMPT = """You are an expert resume parser. Your task is to extract only the company and job position names from the WORK EXPERIENCE or EXPERIENCE sections of the provided resume text. Return the extracted job position related information in a JSON array formatted as follows:
+    ```json
     {{
-        "company_names": {{
-            "Company Name 1": {{"Positions": ["Job Position 1", "Job Position 2"],
-                                "Start Date": "Month Year",
-                                "End Date": "Month Year"}},
-            "Company Name 2": {{"Positions": ["Job Position 1", "Job Position 2"],
-                                "Start Date": "Month Year",
-                                "End Date": "Month Year"}},
-            ...
-        }}
+    "company_names": {{
+        "Company Name 1": {{
+        "Positions": ["Job Position 1", "Job Position 2"],
+        "Start Date": "Month Year",
+        "End Date": "Month Year"
+        "Relevant Skills": ["Skill 1", "Skill 2"]
+        }},
+        "Company Name 2": {{
+        "Positions": ["Job Position 1"],
+        "Start Date": "Month Year",
+        "End Date": "Month Year"
+        "Relevant Skills": ["Skill 1", "Skill 2"]
+        }},
+        ...
     }}
+    }}
+    ```
 
 Ensure the following:
-- Extract only company names and job positions associated with the company.
+- Extract only job position related information associated with the company.
 - If no company names are found, return an empty array.
 - Do not include any additional information or details.
 
@@ -139,23 +147,71 @@ SMALL_INFO_EXTRACTOR_USER_PROMPT = """
     - Start Date (in "Month Year" format)
     - End Date (in "Month Year" format, or "Present" if the position is ongoing)
     3. Format the extracted information as a JSON object, structured as follows:
+    ```json
     {{
     "company_names": {{
         "Company Name 1": {{
         "Positions": ["Job Position 1", "Job Position 2"],
         "Start Date": "Month Year",
         "End Date": "Month Year"
+        "Relevant Skills": ["Skill 1", "Skill 2"]
         }},
         "Company Name 2": {{
         "Positions": ["Job Position 1"],
         "Start Date": "Month Year",
         "End Date": "Month Year"
+        "Relevant Skills": ["Skill 1", "Skill 2"]
         }},
         ...
     }}
     }}
+    ```
     4. Start with the most recent job position and group multiple positions under the same company name if applicable.
     5. If dates are missing, leave them as empty strings ("").
     6. Do not include any additional information beyond the specified format.
     </Instructions>
     """
+
+
+SMALL_LOCATION_EXTRACTOR_SYSTEM_PROMPT = """You are an expert resume parser. Your task is to analyze the first 300 words of a resume and extract the current location of the resume owner. The location should include the city, state, and/or country, depending on what is available.
+
+Return the extracted location in the following JSON format:
+```json
+    {
+    "current_location": "City, State, Country"
+    }
+```
+Ensure the following:
+- Extract the most recent or relevant location mentioned (e.g., under contact information, address, or recent work experience).
+- If no location is found, return "None".
+- Do not include any additional information beyond the specified format.
+"""
+
+SMALL_LOCATION_EXTRACTOR_USER_PROMPT = """
+<Resume Text>
+{}
+</Resume Text>
+
+<Instructions>
+1. The location should include the city, state, and/or country, depending on what is available.
+2. Return the extracted location in the following JSON format:
+    ```json
+        {
+        "current_location": "City, State, Country"
+        }
+    ```
+3. If no location is found, return:
+    ```json
+        {
+        "current_location": "None"
+        }
+    ```
+4. Focus on the most recent or relevant location mentioned (e.g., under contact information, address, or recent work experience).
+5. Do not include any additional information beyond the specified format.
+
+Example Output:
+{
+  "current_location": "San Francisco, California, USA"
+}
+</Instructions>
+"""

@@ -1,3 +1,4 @@
+import json
 import os
 from typing import Union
 
@@ -23,7 +24,7 @@ if not OPENAI_AVAILABLE:
     print("OpenAI API key not found. Only Ollama will be used.")
 
 
-async def call_llm(
+def call_llm(
     system_prompt: Union[str, None],
     user_prompt: str,
     provider: str = "ollama",
@@ -67,7 +68,7 @@ async def call_llm(
             return f"Error: {str(e)}"
 
     elif provider.lower() == "ollama":
-        response: ChatResponse = await AsyncClient().chat(
+        response: ChatResponse = chat(
             model=ollama_model,
             messages=messages,
         )
@@ -79,7 +80,7 @@ async def call_llm(
         )
 
 
-async def main():
+def main():
     import pymupdf as fitz
     import nltk
 
@@ -151,7 +152,7 @@ async def main():
     for i, chunk in enumerate(resume_chunks):
         print(f"🧩 [CHUNK {i}]\n {chunk}")
 
-        response = await call_llm(
+        response = call_llm(
             SMALL_INFO_EXTRACTOR_SYSTEM_PROMPT,
             SMALL_INFO_EXTRACTOR_USER_PROMPT.format(chunk),
             provider="ollama",
@@ -159,6 +160,15 @@ async def main():
         )
         print("#" * 20 + "\nWORK EXPERIENCE\n" + "#" * 20)
         print(response)
+        
+        json_start = response.find("{")
+        json_end = response.rfind("}")
+        if json_start == -1 or json_end == -1:
+            continue
+        extracted_dict: str = response[json_start : json_end + 1]
+        extracted_dict: dict = json.loads(extracted_dict)
+        
+        print(extracted_dict)
 
     # company_response = await call_llm(
     #     POISITION_NAME_EXTRACTOR_SYSTEM_PROMPT,
@@ -172,6 +182,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    import asyncio
-
-    asyncio.run(main())
+    main()
