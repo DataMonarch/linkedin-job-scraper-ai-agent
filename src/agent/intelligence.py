@@ -1,6 +1,7 @@
 # Local imports
+import json
 import re
-from typing import Dict, List
+from typing import Any, Dict, List, Union
 
 import urllib
 from agent.prompts import (
@@ -8,14 +9,24 @@ from agent.prompts import (
     RESUME_INFO_EXTRACTOR_USER_PROMPT,
     KEYWORD_GEN_SYSTEM_PROMPT,
     KEYWORD_GEN_USER_PROMPT,
+    SMALL_INFO_EXTRACTOR_SYSTEM_PROMPT,
+    SMALL_INFO_EXTRACTOR_USER_PROMPT,
+    SMALL_LOCATION_EXTRACTOR_SYSTEM_PROMPT,
+    SMALL_LOCATION_EXTRACTOR_USER_PROMPT,
 )
 from agent.llm import call_llm
+import nltk
+
+nltk.download("punkt")
+
+WORD_TOKENIZER = nltk.tokenize.TreebankWordTokenizer()
+MAX_WORDS_PER_CHUNK = 300
 
 # Fields we expect in the final extracted text
 EXTRACTION_FIELDS = ["positions", "current_location", "years_experience", "skills"]
 
 
-def parse_extracted_info(extracted_text: str) -> Dict[str, str]:
+def parse_gpt_extracted_info(extracted_text: str) -> Dict[str, str]:
     """
     Parse the four fields from the LLM response:
       {current_location}: ...
@@ -44,7 +55,7 @@ def parse_extracted_info(extracted_text: str) -> Dict[str, str]:
     return parsed_info
 
 
-def parse_keyword_sets(extracted_text: str, k: int) -> List[str]:
+def parse_gpt_keyword_sets(extracted_text: str, k: int) -> List[str]:
     """
     Parse the <Keywords> block from the LLM response to extract exactly k lines.
     The LLM output includes a section like:
@@ -83,6 +94,69 @@ def parse_keyword_sets(extracted_text: str, k: int) -> List[str]:
             break
 
     return results
+
+
+def parse_llm_json_output(llm_output: str) -> Union[Dict[str, Any], None]:
+    """
+    Parse the JSON output from the LLM API call.
+    We expect a JSON object with the following keys:
+      - "company_names": {company: {job_title, start_date, end_date}}
+    """
+
+    json_start = llm_output.find("{")
+    json_end = llm_output.rfind("}")
+    if json_start == -1 or json_end == -1:
+        return None
+    extracted_dict: str = llm_output[json_start : json_end + 1]
+    extracted_dict: dict = json.loads(llm_output)
+
+    return extracted_dict
+
+
+def parse_mhop_location_info(llm_output: str) -> Dict[str, str]:
+    """
+    Parse the location information from the LLM response.
+    The LLM response should be a JSON object with the following keys:
+      - "current_location": ...
+    """
+    extracted_info = parse_llm_json_output(llm_output)
+
+    current_location = extracted_info.get("current_location", "")
+
+    return current_location
+
+
+def parse_mhop_extracted_info(llm_outputs: List[str]) -> Dict[str, Any]:
+    work_history = []
+
+    for i, llm_output in enumerate(llm_outputs):
+        extracted_dict = parse_llm_json_output(llm_output)
+        if not extracted_dict:
+            print(f"⚠️  [CHUNK {i}] No JSON found in LLM output.")
+            continue
+        companies_info: dict = extracted_dict.get("company_names", {})
+        companies = list(companies_info.keys())
+
+        work_history_current_chunk = [companies_info[company] for company in companies]
+        work_history.extend(work_history_current_chunk)
+
+    work_history_start_year = 3000
+    work_history_end_year = 0
+
+    for job in work_history:
+        start_date = job.get("Start Date", "")
+        end_date = job.get("End Date", "")
+
+        if start_date:
+            job_start_year = int(start_date.split("/")[-1])
+            work_history_start_year = min(work_history_start_year, job_start_year)
+        if end_date:
+            job_end_year = int(end_date.split("/")[-1])
+            work_history_end_year = max(work_history_end_year, job_end_year)
+
+    total_experience = work_history_end_year - work_history_start_year
+
+    return (work_history, total_experience)
 
 
 def build_linkedin_url(
@@ -131,7 +205,7 @@ def extract_info_and_keywords(
     resume_text: str,
     k: int = 20,
     provider: str = "openai",
-    ollama_model: str = "mistral",
+    ollama_model: str = "llama3.2",
     openai_model: str = "gpt-4",
 ) -> Dict[str, any]:
     """
@@ -142,11 +216,10 @@ def extract_info_and_keywords(
 
     Returns a dict with:
       {
-        "parsed_fields": {
-           "positions": str,
+        "user_data": {
+           "work_history": List[Dict[str, str]],
            "current_location": str,
            "years_experience": str,
-           "skills": str
         },
         "keyword_sets": [list of str],  # e.g. ["1) Software Engineer, Python", "2) ..."]
         "keyword_urls": [list of str],  # corresponding LinkedIn URLs
@@ -154,28 +227,82 @@ def extract_info_and_keywords(
     """
 
     # Format the user prompt with the correct K and resume text
-    user_prompt = RESUME_INFO_EXTRACTOR_USER_PROMPT.format(k=k, resume_text=resume_text)
 
-    # We assume your system prompt doesn't need formatting for K (it references "K" conceptually).
-    system_prompt = RESUME_INFO_EXTRACTOR_SYSTEM_PROMPT
+    user_data = {}
+    print("\n🔍 [AGENT] Extracting resume fields...")
 
-    # Call LLM
-    llm_response = call_llm(
-        system_prompt=system_prompt,
-        user_prompt=user_prompt,
-        provider=provider,
-        ollama_model=ollama_model,
-        openai_model=openai_model,
-    )
+    if provider == "openai":
+        location_response = call_llm(
+            system_prompt=SMALL_LOCATION_EXTRACTOR_SYSTEM_PROMPT,
+            user_prompt=SMALL_LOCATION_EXTRACTOR_USER_PROMPT.format(resume_text),
+            provider=provider,
+            ollama_model=ollama_model,
+        )
+
+        current_location = parse_mhop_location_info(location_response)
+        user_data["current_location"] = current_location
+
+        llm_response = call_llm(
+            system_prompt=SMALL_INFO_EXTRACTOR_SYSTEM_PROMPT,
+            user_prompt=SMALL_INFO_EXTRACTOR_USER_PROMPT.format(resume_text),
+            provider=provider,
+            ollama_model=ollama_model,
+            openai_model=openai_model,
+        )
+
+        work_history, total_experience = parse_mhop_extracted_info([llm_response])
+        user_data["work_history"] = work_history
+        user_data["years_experience"] = total_experience
+    # TODO: Add support for Ollama
+    elif provider == "ollama":
+        tokenized_spans = list(WORD_TOKENIZER.span_tokenize(resume_text))
+        num_chunks = len(tokenized_spans) // MAX_WORDS_PER_CHUNK
+        resume_chunks = []
+
+        for i in range(num_chunks):
+            start, end = (
+                tokenized_spans[i * MAX_WORDS_PER_CHUNK][0],
+                tokenized_spans[(i + 1) * MAX_WORDS_PER_CHUNK][1],
+            )
+            resume_chunks.append(resume_text[start:end])
+
+        # Add the last chunk
+        resume_chunks.append(resume_text[end:])
+        llm_outputs = []
+
+        for i, chunk in enumerate(resume_chunks):
+            print(f"🧩 [CHUNK {i}]\n {chunk}")
+
+            if i == 0:
+                location_response = call_llm(
+                    system_prompt=SMALL_LOCATION_EXTRACTOR_SYSTEM_PROMPT,
+                    user_prompt=SMALL_LOCATION_EXTRACTOR_USER_PROMPT.format(chunk),
+                    provider=provider,
+                    ollama_model=ollama_model,
+                )
+
+                print("#" * 20 + "\nLOCATION\n" + "#" * 20)
+                print(location_response)
+                llm_outputs.append(location_response)
+
+            response = call_llm(
+                system_prompt=RESUME_INFO_EXTRACTOR_SYSTEM_PROMPT,
+                user_prompt=RESUME_INFO_EXTRACTOR_USER_PROMPT.format(chunk),
+                provider=provider,
+                ollama_model=ollama_model,
+            )
+            print("#" * 20 + "\nWORK EXPERIENCE\n" + "#" * 20)
+            print(response)
+
+            llm_outputs.append(response)
+
+        llm_response = parse_mhop_extracted_info(llm_outputs)
 
     # Debug
     print("[DEBUG] LLM Combined Output:\n", llm_response)
 
-    # Parse fields
-    parsed_fields = parse_extracted_info(llm_response)
-
     # Parse the k sets
-    keyword_sets = parse_keyword_sets(llm_response, k)
+    keyword_sets = parse_gpt_keyword_sets(llm_response, k)
 
     # Optionally build a LinkedIn URL for each set
     # We can incorporate the user's location from 'parsed_fields' if desired
