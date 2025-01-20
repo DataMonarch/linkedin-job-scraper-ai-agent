@@ -61,6 +61,7 @@ This project automates the process of:
    ```bash
    uv sync
    ```
+
    - If you don't have uv Astral, see [uv documentation](https://docs.astral.sh/uv/getting-started/installation/).
 
 3. Set your OpenAI key:
@@ -101,36 +102,53 @@ Ensure Chrome is installed. The script will attempt to launch Chrome with `--rem
 
 Below are some placeholders for images or GIFs showing the process:
 
-### Dashboard (Resume Analysis & Scraping):
+### Dashboard (Resume Analysis & Scraping)
+
 [Insert screenshot here]
 
-### Terminal Logs:
+### Terminal Logs
+
 [Insert screenshot here]
 
 ## How It Works
 
 ### Resume Parsing
+
 - The user's resume is parsed by an LLM (OpenAI), extracting relevant positions, skills, etc.
 - Generates search keyword combos stored in `user_data.json`.
 
 ### Building Search URLs
+
 - The code reads `user_data.json` to build LinkedIn job search URLs with location, posted date filter, etc.
 
 ### Scraping
+
 - Launches Chrome (via remote debugging)
 - Playwright visits each search URL and gathers job data from `.job-card-container` elements
 - The script stores job data in `jobs_data.json` and also returns it in the Gradio DataFrame
 
 ### Result
+
 - The user has a list of job URLs and metadata, ready to be reviewed or applied to manually
 
-## Limitations & Future Improvements
+## Limitations & Current State
 
 - **Captchas / Login**: If LinkedIn blocks your automation or shows a captcha, you'll need to login manually or add captcha handling
 - **Changing DOM**: LinkedIn's structure might change. You may need to update selectors
 - **Application**: Currently stops after collecting job URLs. Auto-apply is not implemented
 - **Resume**: If your resume has unusual formatting, the LLM extraction might need refinement
 
+## Future Improvements
 
+### Planned Features
+
+- **Local LLM Support**: Integration with OLLAMA for local model inference:
+  - Implementation of local model pipelines
+  - Performance optimization for keyword generation
+  - Output formatting standardization
+  - Validation layers for model output quality
+- **Auto-apply Functionality**: Automated job application system
+- **Enhanced Resume Parsing**: More robust handling of various resume formats
+- **Captcha Handling**: Automated solution for handling LinkedIn security measures
 
 *Enjoy scraping the latest LinkedIn job listings and collecting their URLs with minimal hassle!*
