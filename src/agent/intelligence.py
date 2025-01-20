@@ -3,13 +3,13 @@ import re
 from typing import Dict, List
 
 import urllib
-from .prompts import (
+from agent.prompts import (
     RESUME_INFO_EXTRACTOR_SYSTEM_PROMPT,
     RESUME_INFO_EXTRACTOR_USER_PROMPT,
     KEYWORD_GEN_SYSTEM_PROMPT,
     KEYWORD_GEN_USER_PROMPT,
 )
-from .llm import call_llm
+from agent.llm import call_llm
 
 # Fields we expect in the final extracted text
 EXTRACTION_FIELDS = ["positions", "current_location", "years_experience", "skills"]
