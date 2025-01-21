@@ -2,6 +2,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 
 import gradio as gr
 
@@ -73,6 +74,7 @@ def handle_scrape_jobs(search_rate_limit):
     Return results in a 2D list for display in a DataFrame.
     """
     open_chrome_with_remote_debugging()
+    time.sleep(3)
 
     li_auto = LinkedInAutomation(headless=False)  # or True if you prefer headless
     initial_search_urls = li_auto.search_url_list
